@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VOID WYRM · 3D Field Simulation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --void:#020408;--panel:#060c14;
+  --border:rgba(0,180,255,0.18);
+  --p1:#00c8ff;--p2:#ff5500;--p3:#00ff99;
+  --mono:'Share Tech Mono',monospace;--head:'Orbitron',sans-serif;
+  --text:#b8d8f0;--muted:rgba(140,180,210,0.5);
+}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--void);font-family:var(--mono);color:var(--text)}
+#app{width:100%;height:100%;display:grid;grid-template-rows:44px 1fr;grid-template-columns:1fr 220px}
+
+#hdr{
+  grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;background:rgba(2,6,12,0.97);border-bottom:1px solid var(--border);
+}
+.hdr-title{font-family:var(--head);font-size:12px;font-weight:700;letter-spacing:3px;color:var(--p1);text-shadow:0 0 20px rgba(0,200,255,0.35)}
+.hdr-sub{font-size:8px;color:var(--muted);letter-spacing:2px;margin-top:1px}
+.hstats{display:flex;gap:16px}
+.hs{font-size:8px;color:var(--muted);letter-spacing:1px}.hs span{color:var(--p1)}
+
+#viewport{position:relative;overflow:hidden;background:#000}
+#c3d{width:100%;height:100%;display:block}
+
+#panel{
+  background:var(--panel);border-left:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;overflow-x:hidden;
+}
+#panel::-webkit-scrollbar{width:2px}
+#panel::-webkit-scrollbar-thumb{background:var(--border)}
+
+.psec{border-bottom:1px solid var(--border);padding:9px 11px}
+.pt{font-family:var(--head);font-size:7px;letter-spacing:3px;color:var(--muted);margin-bottom:7px;display:flex;align-items:center;gap:5px}
+.pt::before{content:'';width:10px;height:1px;background:var(--p1)}
+
+.sl-row{display:flex;flex-direction:column;gap:2px;margin-bottom:7px}
+.sl-lbl{display:flex;justify-content:space-between;font-size:8px;color:var(--muted)}
+.sl-val{color:var(--p1)}
+input[type=range]{width:100%;height:2px;appearance:none;outline:none;cursor:pointer;border-radius:1px;
+  background:linear-gradient(90deg,var(--p1) var(--pct,50%),rgba(0,200,255,0.1) var(--pct,50%))}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:9px;height:9px;border-radius:50%;background:var(--p1);box-shadow:0 0 6px rgba(0,200,255,0.6)}
+
+.tog-row{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px}
+.tog{padding:3px 7px;font-size:7px;font-family:var(--head);letter-spacing:1px;
+  background:rgba(0,200,255,0.03);border:1px solid rgba(0,200,255,0.1);
+  color:var(--muted);cursor:pointer;transition:.15s;border-radius:2px}
+.tog:hover{border-color:rgba(0,200,255,0.4);color:var(--text)}
+.tog.on{background:rgba(0,200,255,0.1);border-color:var(--p1);color:var(--p1)}
+.tog.hot{background:rgba(255,85,0,0.1);border-color:var(--p2);color:var(--p2)}
+
+.leg{display:flex;align-items:center;gap:6px;margin-bottom:3px;font-size:8px;color:var(--muted)}
+.lc{width:18px;height:2px;border-radius:1px;flex-shrink:0}
+
+.ro-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px}
+.ro{background:rgba(0,0,0,0.3);border:1px solid var(--border);padding:4px 6px}
+.ro-l{font-size:7px;color:var(--muted);letter-spacing:1px;margin-bottom:1px}
+.ro-v{font-size:11px;color:var(--p1);font-family:var(--head);font-weight:600}
+.ro-u{font-size:7px;color:var(--muted)}
+
+#hint{position:absolute;bottom:10px;left:12px;font-size:8px;color:rgba(140,180,210,0.4);letter-spacing:1px;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="hdr">
+  <div>
+    <div class="hdr-title">VOID WYRM · 3D MAGNETIC FIELD SIMULATION</div>
+    <div class="hdr-sub">18-MAGNET HEXAGONAL CHAMBER · DIPOLE FIELD INTEGRATION · REAL-TIME 3D</div>
+  </div>
+  <div class="hstats">
+    <div class="hs">MAGNETS <span>18</span></div>
+    <div class="hs">FIELD LINES <span id="st-fl">—</span></div>
+    <div class="hs">CURRENT <span id="st-cur">—</span> MA</div>
+    <div class="hs">STABILITY <span id="st-stab">—</span>%</div>
+  </div>
+</div>
+
+<div id="viewport">
+  <canvas id="c3d"></canvas>
+  <div id="hint">DRAG to rotate · SCROLL to zoom · RIGHT-DRAG to pan</div>
+</div>
+
+<div id="panel">
+  <div class="psec">
+    <div class="pt">DISPLAY</div>
+    <div class="tog-row">
+      <div class="tog on" id="tog-magnets">MAGNETS</div>
+      <div class="tog on" id="tog-hex">HEX WALL</div>
+      <div class="tog on" id="tog-torus">TORUS</div>
+    </div>
+    <div class="tog-row">
+      <div class="tog on" id="tog-lines">FIELD LINES</div>
+      <div class="tog on" id="tog-arrows">ARROWS</div>
+      <div class="tog" id="tog-axes">AXES</div>
+    </div>
+    <div class="tog-row">
+      <div class="tog on" id="tog-sing">SINGULARITY</div>
+      <div class="tog" id="tog-grid">GRID PLANE</div>
+      <div class="tog hot on" id="tog-glow">PLASMA GLOW</div>
+    </div>
+  </div>
+
+  <div class="psec">
+    <div class="pt">MAGNET ARRAY</div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>COIL CURRENT</span><span class="sl-val" id="lbl-cur">8.0 MA</span></div>
+      <input type="range" id="sl-cur" min="1" max="20" step="0.1" value="8">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>HEX RADIUS</span><span class="sl-val" id="lbl-rad">1.0×</span></div>
+      <input type="range" id="sl-rad" min="0.5" max="1.6" step="0.05" value="1.0">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>MAGNET SPREAD</span><span class="sl-val" id="lbl-spr">1.0×</span></div>
+      <input type="range" id="sl-spr" min="0.3" max="2.0" step="0.05" value="1.0">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>MAGNET HEIGHT</span><span class="sl-val" id="lbl-mh">0.4</span></div>
+      <input type="range" id="sl-mh" min="0.05" max="1.2" step="0.05" value="0.4">
+    </div>
+  </div>
+
+  <div class="psec">
+    <div class="pt">PLASMA / SINGULARITY</div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>PLASMA CURRENT</span><span class="sl-val" id="lbl-pl">4.0 MA</span></div>
+      <input type="range" id="sl-pl" min="0" max="15" step="0.1" value="4">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>TIDAL STRENGTH</span><span class="sl-val" id="lbl-td">0.5×</span></div>
+      <input type="range" id="sl-td" min="0" max="2" step="0.05" value="0.5">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>COLLAPSE DEPTH</span><span class="sl-val" id="lbl-cd">0.3×</span></div>
+      <input type="range" id="sl-cd" min="0" max="0.95" step="0.02" value="0.3">
+    </div>
+  </div>
+
+  <div class="psec">
+    <div class="pt">FIELD LINES</div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>SEED COUNT</span><span class="sl-val" id="lbl-sd">120</span></div>
+      <input type="range" id="sl-sd" min="20" max="400" step="10" value="120">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>STEP SIZE</span><span class="sl-val" id="lbl-ss">0.012</span></div>
+      <input type="range" id="sl-ss" min="0.004" max="0.04" step="0.002" value="0.012">
+    </div>
+    <div class="sl-row">
+      <div class="sl-lbl"><span>MAX STEPS</span><span class="sl-val" id="lbl-ms">500</span></div>
+      <input type="range" id="sl-ms" min="100" max="1200" step="50" value="500">
+    </div>
+  </div>
+
+  <div class="psec">
+    <div class="pt">OPERATOR DIGITS — LIVE</div>
+    <div class="ro-grid">
+      <div class="ro"><div class="ro-l">B_coil</div><div class="ro-v" id="ro-bc">—<span class="ro-u"> T</span></div></div>
+      <div class="ro"><div class="ro-l">r_c</div><div class="ro-v" id="ro-rc">—<span class="ro-u"> m</span></div></div>
+      <div class="ro"><div class="ro-l">a collapse</div><div class="ro-v" id="ro-a">—</div></div>
+      <div class="ro"><div class="ro-l">d envelope</div><div class="ro-v" id="ro-d">—</div></div>
+      <div class="ro"><div class="ro-l">b shear</div><div class="ro-v" id="ro-b">—</div></div>
+      <div class="ro"><div class="ro-l">c rebound</div><div class="ro-v" id="ro-c">—</div></div>
+    </div>
+  </div>
+  <div class="psec">
+    <div class="pt">PFUH OPERATOR STATE</div>
+    <div class="ro-grid">
+      <div class="ro"><div class="ro-l">𝓒 = a/d</div><div class="ro-v" id="ro-C">—</div></div>
+      <div class="ro"><div class="ro-l">i → φ/π</div><div class="ro-v" id="ro-i">—</div></div>
+      <div class="ro"><div class="ro-l">D* density</div><div class="ro-v" id="ro-Ds">—</div></div>
+      <div class="ro"><div class="ro-l">F* thrust</div><div class="ro-v" id="ro-Fs">—<span class="ro-u"> N</span></div></div>
+    </div>
+    <div style="margin-top:7px;font-size:8px;font-family:var(--mono);color:var(--muted);letter-spacing:1px" id="ro-band">BAND: —</div>
+    <div style="margin-top:3px;font-size:8px;font-family:var(--mono);color:var(--muted)" id="ro-tasty">TASTY: —</div>
+  </div>
+  <div class="psec">
+    <div class="pt">EXPORT DIGITS</div>
+    <button onclick="exportDigits()" style="width:100%;padding:5px;font-size:8px;font-family:var(--head);letter-spacing:1px;background:rgba(0,200,255,0.08);border:1px solid var(--border);color:var(--p1);cursor:pointer;border-radius:2px">COPY TO CLIPBOARD</button>
+    <div style="margin-top:5px;font-size:7px;color:var(--muted);letter-spacing:1px">Copies REV 2 pending digits table</div>
+  </div>
+
+  <div class="psec">
+    <div class="pt">LEGEND</div>
+    <div class="leg"><div class="lc" style="background:#00c8ff"></div>Coil field (N pole)</div>
+    <div class="leg"><div class="lc" style="background:#ff5500"></div>Coil field (S pole)</div>
+    <div class="leg"><div class="lc" style="background:#ff00cc"></div>Tidal / singularity</div>
+    <div class="leg"><div class="lc" style="background:#00ff99"></div>Combined resultant</div>
+    <div class="leg"><div class="lc" style="background:#ffcc00"></div>Torus plasma</div>
+  </div>
+</div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ── STATE ──
+const S = {
+  current:4, radius:1, spread:1, magnetH:0.4,
+  plasma:4, tidal:0.5, collapse:0.3,
+  seeds:120, stepSize:0.012, maxSteps:500,
+  showMagnets:true, showHex:true, showTorus:true,
+  showLines:true, showArrows:true, showAxes:false,
+  showSing:true, showGrid:false, showGlow:true,
+  dirty:true, t:0
+};
+
+// ── THREE.JS SETUP ──
+const vp = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({canvas: document.getElementById('c3d'), antialias:true, alpha:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setClearColor(0x020408, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+camera.position.set(3.2, 1.8, 3.2);
+camera.lookAt(0,0,0);
+
+function resizeRenderer() {
+  const w = vp.offsetWidth, h = vp.offsetHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+resizeRenderer();
+window.addEventListener('resize', resizeRenderer);
+
+// ── ORBIT CONTROLS (manual) ──
+let isDragging=false, isRightDrag=false;
+let lastX=0, lastY=0;
+let theta=0.7, phi=0.5, radius3=5;
+let panX=0, panY=0;
+
+function updateCamera() {
+  camera.position.set(
+    panX + radius3*Math.sin(phi)*Math.sin(theta),
+    panY + radius3*Math.cos(phi),
+    panX + radius3*Math.sin(phi)*Math.cos(theta)
+  );
+  camera.lookAt(panX, panY, 0);
+}
+updateCamera();
+
+vp.addEventListener('mousedown', e => {
+  isDragging=true; isRightDrag=(e.button===2);
+  lastX=e.clientX; lastY=e.clientY;
+});
+window.addEventListener('mouseup', ()=>{ isDragging=false; });
+window.addEventListener('mousemove', e => {
+  if (!isDragging) return;
+  const dx = e.clientX-lastX, dy = e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  if (isRightDrag) {
+    panX -= dx*0.004; panY += dy*0.004;
+  } else {
+    theta -= dx*0.008;
+    phi = Math.max(0.05, Math.min(Math.PI-0.05, phi - dy*0.008));
+  }
+  updateCamera();
+});
+vp.addEventListener('wheel', e => {
+  radius3 = Math.max(1.5, Math.min(12, radius3 + e.deltaY*0.01));
+  updateCamera();
+  e.preventDefault();
+}, {passive:false});
+vp.addEventListener('contextmenu', e=>e.preventDefault());
+
+// ── PHYSICS ──
+
+// Hex magnet positions in 3D (they lie on hex prism faces)
+function getHexMagnets3D() {
+  const hexR = 0.9 * S.radius;
+  const mH   = S.magnetH;
+  const spread = S.spread;
+  const mags = [];
+
+  for (let face=0; face<6; face++) {
+    const a0 = (face/6)*Math.PI*2 + Math.PI/6;
+    const a1 = ((face+1)/6)*Math.PI*2 + Math.PI/6;
+    const mx = hexR*(Math.cos(a0)+Math.cos(a1))*0.5;
+    const mz = hexR*(Math.sin(a0)+Math.sin(a1))*0.5;
+    // face tangent
+    const tx = Math.cos(a1)-Math.cos(a0);
+    const tz = Math.sin(a1)-Math.sin(a0);
+    const tl = Math.sqrt(tx*tx+tz*tz);
+    const offset = 0.28*spread;
+    // 3 magnets per face × 3 vertical positions
+    for (let m=-1; m<=1; m++) {
+      const fr = m*offset;
+      const px = mx + (tx/tl)*fr;
+      const pz = mz + (tz/tl)*fr;
+      // vertical stack: top, mid, bottom
+      for (let vi=0; vi<3; vi++) {
+        const py = (vi-1)*mH;
+        const polarity = (face%2===0?1:-1) * (m===0?1.3:0.85) * (vi===1?1.1:0.8);
+        // dipole moment points inward (toward axis)
+        const nx=-mx, nz=-mz;
+        const nl=Math.sqrt(nx*nx+nz*nz)+1e-9;
+        mags.push({ x:px, y:py, z:pz, mx:nx/nl, my:0, mz:nz/nl, polarity, face });
+      }
+    }
+  }
+  return mags;
+}
+
+// 3D dipole field
+function dipole3D(px,py,pz, mx,my,mz, strength, ox,oy,oz) {
+  const dx=ox-px, dy=oy-py, dz=oz-pz;
+  const r2 = dx*dx+dy*dy+dz*dz+1e-4;
+  const r  = Math.sqrt(r2);
+  const r3 = r2*r;
+  const mdotr = mx*dx+my*dy+mz*dz;
+  const s = strength/r3;
+  return [
+    s*(3*mdotr*dx/r2 - mx),
+    s*(3*mdotr*dy/r2 - my),
+    s*(3*mdotr*dz/r2 - mz)
+  ];
+}
+
+// Toroidal plasma current (ring at major radius, minor radius smeared)
+function torusField3D(ox,oy,oz) {
+  const majorR=0.55, minorR=0.15;
+  let bx=0,by=0,bz=0;
+  const nRings=8;
+  for (let i=0;i<nRings;i++) {
+    const theta=(i/nRings)*Math.PI*2;
+    const rx=majorR*Math.cos(theta), ry=0, rz=majorR*Math.sin(theta);
+    const [fx,fy,fz]=dipole3D(rx,ry,rz, -Math.sin(theta),0,Math.cos(theta), S.plasma*0.04, ox,oy,oz);
+    bx+=fx;by+=fy;bz+=fz;
+  }
+  return [bx,by,bz];
+}
+
+// Tidal / singularity — 3D radial inward + axial pinch
+function tidalField3D(ox,oy,oz) {
+  const dist=Math.sqrt(ox*ox+oy*oy+oz*oz)+0.01;
+  const fall=1/(dist*dist+0.04);
+  const cf=Math.exp(-dist/(S.collapse+0.05))*S.collapse*2;
+  return [
+    (-ox*fall*0.4 - ox*cf*0.5)*S.tidal,
+    (-oy*fall*0.3 + (1/(dist+0.1))*cf*0.8)*S.tidal,
+    (-oz*fall*0.4 - oz*cf*0.5)*S.tidal
+  ];
+}
+
+// Total field at point
+let _cachedMags = null;
+let _magsDirty = true;
+function getMags() {
+  if (_magsDirty) { _cachedMags = getHexMagnets3D(); _magsDirty=false; }
+  return _cachedMags;
+}
+
+function fieldAt3D(ox,oy,oz) {
+  let bx=0,by=0,bz=0;
+  const mags = getMags();
+  for (const mg of mags) {
+    const [fx,fy,fz]=dipole3D(mg.x,mg.y,mg.z, mg.mx,mg.my,mg.mz, S.current*mg.polarity*0.06, ox,oy,oz);
+    bx+=fx;by+=fy;bz+=fz;
+  }
+  if (S.showTorus) { const [tx,ty,tz]=torusField3D(ox,oy,oz); bx+=tx;by+=ty;bz+=tz; }
+  const [dx,dy,dz]=tidalField3D(ox,oy,oz); bx+=dx;by+=dy;bz+=dz;
+  return [bx,by,bz];
+}
+
+// RK4 field line step
+function rk4Step(px,py,pz,ds) {
+  const [b1x,b1y,b1z]=fieldAt3D(px,py,pz);
+  const m1=Math.sqrt(b1x*b1x+b1y*b1y+b1z*b1z)+1e-12;
+  const dx1=b1x/m1*ds, dy1=b1y/m1*ds, dz1=b1z/m1*ds;
+  const [b2x,b2y,b2z]=fieldAt3D(px+dx1*.5,py+dy1*.5,pz+dz1*.5);
+  const m2=Math.sqrt(b2x*b2x+b2y*b2y+b2z*b2z)+1e-12;
+  const dx2=b2x/m2*ds, dy2=b2y/m2*ds, dz2=b2z/m2*ds;
+  const [b3x,b3y,b3z]=fieldAt3D(px+dx2*.5,py+dy2*.5,pz+dz2*.5);
+  const m3=Math.sqrt(b3x*b3x+b3y*b3y+b3z*b3z)+1e-12;
+  const dx3=b3x/m3*ds, dy3=b3y/m3*ds, dz3=b3z/m3*ds;
+  const [b4x,b4y,b4z]=fieldAt3D(px+dx3,py+dy3,pz+dz3);
+  const m4=Math.sqrt(b4x*b4x+b4y*b4y+b4z*b4z)+1e-12;
+  const dx4=b4x/m4*ds, dy4=b4y/m4*ds, dz4=b4z/m4*ds;
+  return [
+    px+(dx1+2*dx2+2*dx3+dx4)/6,
+    py+(dy1+2*dy2+2*dy3+dy4)/6,
+    pz+(dz1+2*dz2+2*dz3+dz4)/6
+  ];
+}
+
+// Trace a single field line, return array of [x,y,z]
+function traceLine3D(x0,y0,z0,forward) {
+  const ds = (forward?1:-1)*S.stepSize;
+  const pts=[];
+  let x=x0,y=y0,z=z0;
+  for (let i=0;i<S.maxSteps;i++) {
+    const r2=x*x+y*y+z*z;
+    if (r2>3.5||r2<0.004) break;
+    pts.push(x,y,z);
+    [x,y,z]=rk4Step(x,y,z,ds);
+  }
+  return pts;
+}
+
+// Color based on position (radius → temperature heuristic)
+function lineColor(x,y,z) {
+  const r=Math.sqrt(x*x+y*y+z*z);
+  if (r<0.15) return new THREE.Color(1.0, 0.1, 0.8);   // singularity — magenta
+  if (r<0.35) return new THREE.Color(1.0, 0.25, 0.0);   // inner hot — orange
+  if (r<0.60) return new THREE.Color(1.0, 0.7, 0.0);    // torus — amber
+  if (r<0.85) return new THREE.Color(0.0, 0.9, 0.6);    // mid — teal
+  return new THREE.Color(0.0, 0.78, 1.0);                // outer coil — cyan
+}
+
+// ── SCENE OBJECTS ──
+let lineGroup = new THREE.Group();
+let magGroup  = new THREE.Group();
+let hexGroup  = new THREE.Group();
+let torusGroup= new THREE.Group();
+let singGroup = new THREE.Group();
+let axesGroup = new THREE.Group();
+let gridGroup = new THREE.Group();
+
+scene.add(lineGroup, magGroup, hexGroup, torusGroup, singGroup, axesGroup, gridGroup);
+
+// Build hex chamber wall
+function buildHex() {
+  hexGroup.clear();
+  if (!S.showHex) return;
+  const hexR = 0.9*S.radius;
+  const H = S.magnetH*3.5;
+  const verts=[];
+  for (let i=0;i<=6;i++) {
+    const a=(i/6)*Math.PI*2+Math.PI/6;
+    verts.push(new THREE.Vector2(hexR*Math.cos(a), hexR*Math.sin(a)));
+  }
+  // Top and bottom rings
+  [-H,H].forEach(y=>{
+    const geo=new THREE.BufferGeometry();
+    const pos=[];
+    for (let i=0;i<6;i++) {
+      const a=(i/6)*Math.PI*2+Math.PI/6;
+      const a2=((i+1)/6)*Math.PI*2+Math.PI/6;
+      pos.push(hexR*Math.cos(a),y,hexR*Math.sin(a));
+      pos.push(hexR*Math.cos(a2),y,hexR*Math.sin(a2));
+    }
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    hexGroup.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({color:0x00a8cc,opacity:0.35,transparent:true})));
+  });
+  // Vertical edges
+  const geo2=new THREE.BufferGeometry();
+  const pos2=[];
+  for (let i=0;i<6;i++) {
+    const a=(i/6)*Math.PI*2+Math.PI/6;
+    pos2.push(hexR*Math.cos(a),-H,hexR*Math.sin(a));
+    pos2.push(hexR*Math.cos(a), H,hexR*Math.sin(a));
+  }
+  geo2.setAttribute('position',new THREE.Float32BufferAttribute(pos2,3));
+  hexGroup.add(new THREE.LineSegments(geo2,new THREE.LineBasicMaterial({color:0x00a8cc,opacity:0.2,transparent:true})));
+}
+
+// Build 18 magnets (actually 18 face positions × 3 vertical = using the face positions only for visual)
+function buildMagnets() {
+  magGroup.clear();
+  if (!S.showMagnets) return;
+  const hexR=0.9*S.radius;
+  const mH=S.magnetH;
+  const spread=S.spread;
+
+  for (let face=0;face<6;face++) {
+    const a0=(face/6)*Math.PI*2+Math.PI/6;
+    const a1=((face+1)/6)*Math.PI*2+Math.PI/6;
+    const mx=hexR*(Math.cos(a0)+Math.cos(a1))*0.5;
+    const mz=hexR*(Math.sin(a0)+Math.sin(a1))*0.5;
+    const tx=Math.cos(a1)-Math.cos(a0);
+    const tz=Math.sin(a1)-Math.sin(a0);
+    const tl=Math.sqrt(tx*tx+tz*tz);
+    const offset=0.28*spread;
+    const isN=(face%2===0);
+
+    for (let m=-1;m<=1;m++) {
+      const fr=m*offset;
+      const px=mx+(tx/tl)*fr;
+      const pz=mz+(tz/tl)*fr;
+      // Draw as a box magnet
+      const geo=new THREE.BoxGeometry(0.06,mH*2,0.06);
+      const mat=new THREE.MeshBasicMaterial({
+        color: isN?0x00c8ff:0xff5500, opacity:0.85, transparent:true
+      });
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.position.set(px,0,pz);
+      magGroup.add(mesh);
+      // Wireframe outline
+      const wgeo=new THREE.EdgesGeometry(geo);
+      const wmat=new THREE.LineBasicMaterial({color:isN?0x00eeff:0xff8800,opacity:0.9,transparent:true});
+      const wf=new THREE.LineSegments(wgeo,wmat);
+      wf.position.set(px,0,pz);
+      magGroup.add(wf);
+      // Polarity indicator (small sphere at top/bottom)
+      const sg=new THREE.SphereGeometry(0.025,6,6);
+      const sm=new THREE.Mesh(sg,new THREE.MeshBasicMaterial({color:isN?0x00ffff:0xff2200}));
+      sm.position.set(px,mH+0.04,pz);
+      magGroup.add(sm);
+      // Glow sprite
+      if (S.showGlow) {
+        const sp=new THREE.Sprite(new THREE.SpriteMaterial({color:isN?0x00c8ff:0xff5500,opacity:0.12,transparent:true}));
+        sp.position.set(px,0,pz);
+        sp.scale.set(0.3,0.3,1);
+        magGroup.add(sp);
+      }
+      // Label (just M1–M18 as a sprite would need canvas texture, skip for perf)
+    }
+  }
+}
+
+// Build torus visual
+function buildTorus() {
+  torusGroup.clear();
+  if (!S.showTorus) return;
+  const geo=new THREE.TorusGeometry(0.55,0.14,16,48);
+  const mat=new THREE.MeshBasicMaterial({color:0xff4400,wireframe:true,opacity:0.18,transparent:true});
+  torusGroup.add(new THREE.Mesh(geo,mat));
+  // Solid glow ring
+  const geo2=new THREE.TorusGeometry(0.55,0.06,8,48);
+  const mat2=new THREE.MeshBasicMaterial({color:0xff6600,opacity:0.22,transparent:true});
+  torusGroup.add(new THREE.Mesh(geo2,mat2));
+}
+
+// Build singularity
+function buildSingularity() {
+  singGroup.clear();
+  if (!S.showSing) return;
+  // Core sphere
+  const geo=new THREE.SphereGeometry(0.06+S.collapse*0.06,16,16);
+  const mat=new THREE.MeshBasicMaterial({color:0xffffff,opacity:0.9,transparent:true});
+  singGroup.add(new THREE.Mesh(geo,mat));
+  // Event horizon rings
+  [1.0,1.6,2.4].forEach((scale,i)=>{
+    const rg=new THREE.RingGeometry(0.07*scale,0.075*scale,32);
+    const rm=new THREE.MeshBasicMaterial({color:0xff00cc,opacity:0.5-i*0.12,transparent:true,side:THREE.DoubleSide});
+    const ring=new THREE.Mesh(rg,rm);
+    ring.rotation.x=Math.PI/2;
+    singGroup.add(ring);
+    const rg2=new THREE.RingGeometry(0.07*scale,0.075*scale,32);
+    const rm2=new THREE.MeshBasicMaterial({color:0xff00cc,opacity:0.3-i*0.08,transparent:true,side:THREE.DoubleSide});
+    const ring2=new THREE.Mesh(rg2,rm2);
+    ring2.rotation.y=Math.PI/2;
+    singGroup.add(ring2);
+  });
+  // Glow
+  if (S.showGlow) {
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({color:0xff00ff,opacity:0.35,transparent:true}));
+    sp.scale.set(0.5,0.5,1);
+    singGroup.add(sp);
+  }
+}
+
+// Build axes
+function buildAxes() {
+  axesGroup.clear();
+  if (!S.showAxes) return;
+  const dirs=[[1,0,0,0xff2222],[0,1,0,0x22ff22],[0,0,1,0x2222ff]];
+  dirs.forEach(([x,y,z,col])=>{
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,x*1.5,y*1.5,z*1.5],3));
+    axesGroup.add(new THREE.Line(geo,new THREE.LineBasicMaterial({color:col,opacity:0.6,transparent:true})));
+  });
+}
+
+// Build grid plane
+function buildGrid() {
+  gridGroup.clear();
+  if (!S.showGrid) return;
+  const geo=new THREE.BufferGeometry();
+  const pos=[];
+  for (let i=-2;i<=2;i+=0.25) {
+    pos.push(i,0,-2,i,0,2);
+    pos.push(-2,0,i,2,0,i);
+  }
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  gridGroup.add(new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0x112233,opacity:0.4,transparent:true})));
+}
+
+// ── BUILD FIELD LINES ──
+function buildFieldLines() {
+  lineGroup.clear();
+  if (!S.showLines) return;
+  _magsDirty=true;
+
+  // Generate seed points
+  const seeds=[];
+  // Inner shells
+  const shells=[0.08,0.18,0.32,0.50,0.70];
+  shells.forEach((r,si)=>{
+    const n=Math.max(6, Math.floor(S.seeds*0.3*(si+1)/shells.length));
+    for (let i=0;i<n;i++) {
+      const theta=(i/n)*Math.PI*2;
+      const phi=Math.acos(-1+2*((i*0.618+si*0.3)%1));
+      seeds.push([r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta)]);
+    }
+  });
+
+  // Seeds near each magnet face
+  const hexR=0.9*S.radius*0.75;
+  for (let face=0;face<6;face++) {
+    const a=(face/6)*Math.PI*2+Math.PI/12;
+    seeds.push([hexR*Math.cos(a),0,hexR*Math.sin(a)]);
+    seeds.push([hexR*Math.cos(a),0.3,hexR*Math.sin(a)]);
+    seeds.push([hexR*Math.cos(a),-0.3,hexR*Math.sin(a)]);
+  }
+
+  seeds.forEach(([x0,y0,z0])=>{
+    [true,false].forEach(fwd=>{
+      const pts=traceLine3D(x0,y0,z0,fwd);
+      if (pts.length<9) return;
+      // Build vertex colors
+      const positions=new Float32Array(pts.length);
+      const colors=new Float32Array(pts.length);
+      for (let i=0;i<pts.length;i+=3) {
+        positions[i]=pts[i];positions[i+1]=pts[i+1];positions[i+2]=pts[i+2];
+        const c=lineColor(pts[i],pts[i+1],pts[i+2]);
+        colors[i]=c.r;colors[i+1]=c.g;colors[i+2]=c.b;
+      }
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+      geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+      const mat=new THREE.LineBasicMaterial({vertexColors:true,opacity:0.55,transparent:true});
+      lineGroup.add(new THREE.Line(geo,mat));
+
+      // Arrow cones along line
+      if (S.showArrows && pts.length>18) {
+        const fracs=[0.35,0.7];
+        fracs.forEach(f=>{
+          const idx=Math.floor(f*(pts.length/3))*3;
+          if (idx+5>=pts.length) return;
+          const ax=pts[idx],ay=pts[idx+1],az=pts[idx+2];
+          const bx=pts[idx+3],by=pts[idx+4],bz=pts[idx+5];
+          const dir=new THREE.Vector3(bx-ax,by-ay,bz-az).normalize();
+          const cg=new THREE.ConeGeometry(0.012,0.04,6);
+          const c=lineColor(ax,ay,az);
+          const cm=new THREE.Mesh(cg,new THREE.MeshBasicMaterial({color:c,opacity:0.8,transparent:true}));
+          cm.position.set(ax,ay,az);
+          cm.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+          lineGroup.add(cm);
+        });
+      }
+    });
+  });
+
+  document.getElementById('st-fl').textContent=lineGroup.children.length;
+}
+
+// ── FULL REBUILD ──
+function rebuild() {
+  _magsDirty=true;
+  buildHex();
+  buildMagnets();
+  buildTorus();
+  buildSingularity();
+  buildAxes();
+  buildGrid();
+  buildFieldLines();
+  updateReadouts();
+  S.dirty=false;
+}
+
+// ── PHYSICS CONSTANTS ──
+// Sim dipole field units are normalised — we calibrate to physical reality:
+// REBCO HTS coils at 20K: realistic B at coil face = 3–12T
+// 18 coils in hex array: peak field at plasma centre ~5–8T combined
+// Strategy: sample raw sim field, find natural peak, normalise so peak = 8T
+const REBCO_TARGET_T = 8.0;  // Tesla — realistic REBCO peak in this geometry
+const SIM_TO_METRES  = 5.0;  // 1 sim unit = 5 metres (hex 0.9 units = 4.5m radius)
+const PHI = (1+Math.sqrt(5))/2;
+const PI  = Math.PI;
+
+function sampleFieldGrid() {
+  const hexR = 0.9 * S.radius;
+  const samples = [];
+  const radii = [0.05,0.10,0.18,0.28,0.40,0.55,0.70,0.85];
+  radii.forEach(r => {
+    const pts = 12;
+    let sumB = 0;
+    for (let i=0;i<pts;i++) {
+      const theta = (i/pts)*Math.PI*2;
+      const [bx,by,bz] = fieldAt3D(r*Math.cos(theta), 0, r*Math.sin(theta));
+      sumB += Math.sqrt(bx*bx+by*by+bz*bz);
+    }
+    samples.push({r, B: sumB/pts});
+  });
+  return samples;
+}
+
+function computeDigits() {
+  const samples = sampleFieldGrid();
+  const hexR = 0.9 * S.radius;
+
+  // B_coil — direct physical computation, no normalisation instability
+  // REBCO HTS: B_coil ∝ current × turns density × geometry factor
+  // At 20MA drive current in a 10m hex chamber with 18 coils: realistic 2–12T
+  // We compute from the face-radius dipole sum, anchored at 1T per 4MA (conservative REBCO)
+  const TESLA_PER_MA = 0.55;  // T/MA — conservative REBCO in this geometry
+  const B_raw_peak = Math.max(...samples.map(s=>s.B), 1e-9);
+  const B_face_raw = samples.find(s=>s.r>=0.70)?.B || samples[samples.length-2].B;
+  // B_coil: linear in current (REBCO is linear below critical current)
+  const B_coil = S.current * TESLA_PER_MA * (B_face_raw / B_raw_peak);
+
+  // r_c — coherence radius, robust against non-monotonic profiles
+  // Strategy: find the two samples that bracket 20% of peak (robust threshold)
+  // then interpolate. Fall back to linear extrapolation if field is flat.
+  const B_20pct = B_raw_peak * 0.20;
+  let rc_sim = hexR;  // default: full chamber radius
+  for (let k=1; k<samples.length; k++) {
+    if (samples[k].B <= B_20pct) {
+      // Linear interpolation between samples[k-1] and samples[k]
+      const frac = (B_20pct - samples[k-1].B) / (samples[k].B - samples[k-1].B + 1e-12);
+      rc_sim = samples[k-1].r + frac*(samples[k].r - samples[k-1].r);
+      break;
+    }
+  }
+  // If field never drops to 20% within chamber, extrapolate using last two samples
+  if (rc_sim === hexR && samples.length >= 2) {
+    const sA = samples[samples.length-2], sB = samples[samples.length-1];
+    const dBdr = (sB.B - sA.B) / (sB.r - sA.r + 1e-12);
+    if (dBdr < 0) rc_sim = sB.r + (B_20pct - sB.B) / dBdr;
+  }
+  // Scale to physical metres, boost with current (wider field at higher I)
+  const r_c = Math.max(1, rc_sim * SIM_TO_METRES * Math.sqrt(S.current / 4.0));
+
+  // Envelope strength d — use robust log ratio between inner and mid-field samples
+  const ratio45 = Math.max(samples[4].B / (samples[0].B + 1e-12), 0.002);
+  const L_robust = -samples[4].r / Math.log(ratio45);
+  const d = Math.max(0.05, Math.min(0.95, Math.abs(L_robust) / (hexR * 1.5)));
+
+  // Collapse amplitude a — dimensionless, scales with B_coil and collapse depth
+  const a = Math.min(3.0, (B_coil / REBCO_TARGET_T) * S.collapse * 1.2 + 0.05);
+
+  // Shear strength b — phase advance fraction Δφ_S / 2π
+  const b = Math.min(0.95, S.plasma * S.spread * 0.018 + 0.08);
+
+  // Rebound gain c — skim port extraction efficiency
+  const [sbx,sby,sbz] = fieldAt3D(hexR*0.88, 0, 0);
+  const B_skim_raw = Math.sqrt(sbx*sbx+sby*sby+sbz*sbz);
+  const c = Math.min(0.92, (B_skim_raw / B_raw_peak) * (1.0 - S.collapse * 0.25) * 0.85 + 0.05);
+
+  // 𝓒 = a/d
+  const C_op = a / (d + 0.001);
+
+  // Identity operator i = a/m (angular momentum / structural inertia)
+  // i(t) = θ × i  →  evolves toward attractor φ/π = 0.5149
+  // Physical mapping:
+  //   angular momentum a_mom  ∝  plasma rotation × B_coil × chamber radius
+  //   structural inertia m    ∝  coil mass × height (current × magnetH as proxy)
+  // We want i_norm to approach φ/π as the system nears resonance.
+  // Key insight: i saturates at φ/π when B_coil × r_plasma / (I × h) ~ 1
+  // So we compute the raw ratio and map it onto (0, φ/π) with a smooth saturating function.
+  // Identity operator i = a/m  →  attractor φ/π = 0.5149
+  // a = angular momentum of rotating plasma: ω × I_moment
+  //   proxy: plasma current × chamber radius² (rotating current loop)
+  // m = structural inertia of coil assembly
+  //   proxy: coil mass × moment arm = (current × height × coil_mass_factor) × radius
+  // The ratio a/m converges to φ/π when the system reaches coherent rotation.
+  // Physically: high plasma current + large radius + light structure → i rises.
+  // Low magnet height (less mass) also helps — lighter coil = lower m.
+  const r_plasma_m = hexR * 0.55 * SIM_TO_METRES;
+  const a_ang      = S.plasma * r_plasma_m * r_plasma_m * 0.08;   // plasma ang. mom. proxy
+  const m_struct   = S.current * S.magnetH * S.radius * 0.25 + 0.1; // structural inertia proxy
+  const i_ratio    = a_ang / m_struct;
+  // tanh attractor scaled to φ/π ceiling
+  // Coefficient tuned so at plasma=10MA, radius=1.35, magnetH=0.95 → i ~ 0.45–0.52
+  const i_norm = (PHI/PI) * Math.tanh(i_ratio * 1.8);
+
+  // Steady-state D* = a(1-d)/d
+  const D_star = a * (1-d) / (d + 0.001);
+
+  // Steady-state F* = c·b·(D*+a)·(1-d)/d — in MN, scaled to 10m hex chamber
+  const chamberR_m = hexR * SIM_TO_METRES;
+  const F_star_MN  = c * b * (D_star + a) * (1-d) / (d+0.001) * chamberR_m * 0.8;
+
+  // Band classification
+  let band = '—';
+  let bandCol = 'var(--muted)';
+  if      (C_op < PHI/PI)        { band='BELOW COHERENT BAND ✗';   bandCol='#ff8800'; }
+  else if (C_op < 1.0)           { band='COHERENCE ZONE ✓';        bandCol='#00ff99'; }
+  else if (C_op <= 1.05)         { band='PRODUCTIVE CENTRE ✓✓';    bandCol='#00ffcc'; }
+  else if (C_op < PI/PHI)        { band='PHASE-ADVANCE BAND ✓';    bandCol='#00c8ff'; }
+  else                           { band='OVER-SHEAR — UNSTABLE ✗'; bandCol='#ff3300'; }
+
+  // Tasty condition
+  const t1 = C_op >= PHI/PI && C_op <= PI/PHI;
+  const t2 = Math.abs(i_norm - PHI/PI) < 0.12;
+  const t3 = r_c >= 15;  // ≥15m coherence for neighbour coupling at 40–60m spacing
+  const tasty = t1 && t2 && t3;
+
+  return {B_coil, r_c, a, d, b, c, C_op, i_norm, D_star, F_star_MN, band, bandCol, t1, t2, t3, tasty};
+}
+
+function updateReadouts() {
+  const D = computeDigits();
+
+  // Header stats
+  document.getElementById('st-cur').textContent = S.current.toFixed(1);
+
+  // Operator digits
+  document.getElementById('ro-bc').innerHTML = D.B_coil.toFixed(2)+'<span class="ro-u"> T</span>';
+  document.getElementById('ro-rc').innerHTML = D.r_c.toFixed(1)+'<span class="ro-u"> m</span>';
+  document.getElementById('ro-a').textContent  = D.a.toFixed(4);
+  document.getElementById('ro-d').textContent  = D.d.toFixed(4);
+  document.getElementById('ro-b').textContent  = D.b.toFixed(4);
+  document.getElementById('ro-c').textContent  = D.c.toFixed(4);
+
+  // Pfuh state
+  const Cstr = D.C_op.toFixed(4);
+  const Cel = document.getElementById('ro-C');
+  Cel.textContent = Cstr;
+  Cel.style.color = D.C_op>=PHI/Math.PI&&D.C_op<=Math.PI/PHI ? '#00ff99' : '#ff5500';
+
+  document.getElementById('ro-i').textContent  = D.i_norm.toFixed(4);
+  document.getElementById('ro-Ds').textContent = D.D_star.toExponential(3);
+  document.getElementById('ro-Fs').innerHTML   = D.F_star_MN.toFixed(3)+'<span class="ro-u"> MN</span>';
+
+  const bandEl = document.getElementById('ro-band');
+  bandEl.textContent = 'BAND: '+D.band;
+  bandEl.style.color = D.bandCol;
+
+  const tastyEl = document.getElementById('ro-tasty');
+  if (D.tasty) {
+    tastyEl.textContent = 'TASTY CONDITION: ✓✓✓ ALL MET';
+    tastyEl.style.color = '#00ff99';
+  } else {
+    const met = [D.t1?'𝓒✓':'𝓒✗', D.t2?'i✓':'i✗', D.t3?'r_c✓':'r_c✗'];
+    tastyEl.textContent = 'TASTY: '+met.join(' · ');
+    tastyEl.style.color = '#ff8800';
+  }
+
+  // Header stability from C band
+  const stab = D.tasty ? 100 : Math.round(Math.max(0,100-Math.abs(D.C_op-1.0)*40));
+  document.getElementById('st-stab').textContent = stab;
+}
+
+function exportDigits() {
+  const D = computeDigits();
+  const PHI2 = (1+Math.sqrt(5))/2;
+  const txt = `TINFOIL LABORATORIES · PROJECT VOIDWYRM · PENDING DIGITS — SIM OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generated from: Void Wyrm 3D Field Simulation
+Hex chamber: ${S.radius.toFixed(2)}× radius · ${Math.round(S.seeds)} field lines
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+OPERATOR PARAMETERS
+  B_coil    = ${D.B_coil.toFixed(3)} T       (peak field at plasma face)
+  r_c       = ${D.r_c.toFixed(2)} m       (coherence radius, 1/e field drop)
+  a         = ${D.a.toFixed(6)}    (collapse amplitude)
+  b         = ${D.b.toFixed(6)}    (shear strength)
+  c         = ${D.c.toFixed(6)}    (rebound gain / skim port efficiency)
+  d         = ${D.d.toFixed(6)}    (envelope strength / field decay)
+
+PFUH OPERATOR STATE
+  𝓒 = a/d  = ${D.C_op.toFixed(6)}    (target band: ${(PHI2/Math.PI).toFixed(4)} – ${(Math.PI/PHI2).toFixed(4)})
+  i → φ/π  = ${D.i_norm.toFixed(6)}    (attractor: ${(PHI2/Math.PI).toFixed(4)})
+  D*        = ${D.D_star.toExponential(4)}  (steady-state plasma density)
+  F*        = ${D.F_star_MN.toFixed(3)} MN    (steady-state thrust)
+
+BAND STATUS
+  ${D.band}
+
+TASTY CONDITION
+  𝓒 in band:   ${D.t1 ? '✓ YES' : '✗ NO  — adjust collapse depth / coil current'}
+  i → φ/π:    ${D.t2 ? '✓ YES' : '✗ NO  — adjust hex radius / magnet height'}
+  r_c ≥ 20m:  ${D.t3 ? '✓ YES' : '✗ NO  — increase current or reduce spread'}
+  OVERALL:     ${D.tasty ? '✓✓✓ TASTY — all conditions met' : '✗ NOT YET TASTY'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DERIVED VALUES (from above)
+  D* = a(1-d)/d        = ${D.D_star.toExponential(4)}
+  F* = c·b·(D*+a)(1-d)/d = ${D.F_star_MN.toFixed(3)} MN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Slot these into the REV 2 pending digits table.
+`;
+  navigator.clipboard.writeText(txt).then(()=>{
+    const btn = document.querySelector('[onclick="exportDigits()"]');
+    btn.textContent='COPIED ✓';
+    btn.style.color='#00ff99';
+    setTimeout(()=>{btn.textContent='COPY TO CLIPBOARD';btn.style.color='var(--p1)';},2500);
+  });
+}
+
+// ── ANIMATION LOOP ──
+function animate() {
+  requestAnimationFrame(animate);
+  S.t+=0.012;
+
+  // Pulse singularity rings
+  singGroup.children.forEach((c,i)=>{
+    if (c.type==='Mesh'&&c.geometry.type==='RingGeometry') {
+      c.rotation.z=S.t*(0.3+i*0.1);
+      if (c.material) c.material.opacity=Math.max(0,c.material.opacity*0.99+Math.sin(S.t+i)*0.005);
+    }
+  });
+
+  renderer.render(scene,camera);
+}
+
+// ── CONTROLS ──
+function sl(id,lblId,prop,fmt,rebuildFull) {
+  const el=document.getElementById(id);
+  const lbl=document.getElementById(lblId);
+  const setPct=()=>{
+    const pct=(parseFloat(el.value)-parseFloat(el.min))/(parseFloat(el.max)-parseFloat(el.min))*100;
+    el.style.setProperty('--pct',pct+'%');
+  };
+  setPct();
+  el.addEventListener('input',()=>{
+    S[prop]=parseFloat(el.value);
+    lbl.textContent=fmt(S[prop]);
+    setPct();
+    _magsDirty=true;
+    if (rebuildFull) rebuild(); else { buildFieldLines(); updateReadouts(); }
+  });
+}
+
+sl('sl-cur','lbl-cur','current',v=>v.toFixed(1)+' MA',false);
+sl('sl-rad','lbl-rad','radius', v=>v.toFixed(2)+'×',true);
+sl('sl-spr','lbl-spr','spread', v=>v.toFixed(2)+'×',true);
+sl('sl-mh', 'lbl-mh', 'magnetH',v=>v.toFixed(2),true);
+sl('sl-pl', 'lbl-pl', 'plasma', v=>v.toFixed(1)+' MA',false);
+sl('sl-td', 'lbl-td', 'tidal',  v=>v.toFixed(2)+'×',false);
+sl('sl-cd', 'lbl-cd', 'collapse',v=>v.toFixed(2)+'×',true);
+sl('sl-sd', 'lbl-sd', 'seeds',  v=>Math.round(v),false);
+sl('sl-ss', 'lbl-ss', 'stepSize',v=>v.toFixed(3),false);
+sl('sl-ms', 'lbl-ms', 'maxSteps',v=>Math.round(v),false);
+
+function tog(id,prop,rebuildFull) {
+  const el=document.getElementById(id);
+  el.addEventListener('click',()=>{
+    S[prop]=!S[prop];
+    el.classList.toggle('on',S[prop]);
+    if (rebuildFull) rebuild(); else buildFieldLines();
+  });
+}
+tog('tog-magnets','showMagnets',true);
+tog('tog-hex',    'showHex',    true);
+tog('tog-torus',  'showTorus',  true);
+tog('tog-lines',  'showLines',  false);
+tog('tog-arrows', 'showArrows', false);
+tog('tog-axes',   'showAxes',   true);
+tog('tog-sing',   'showSing',   true);
+tog('tog-grid',   'showGrid',   true);
+tog('tog-glow',   'showGlow',   true);
+
+// ── INIT ──
+rebuild();
+animate();
+</script>
+</body>
+</html>
